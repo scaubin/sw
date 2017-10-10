@@ -31,7 +31,8 @@ use think\Exception;
 class WebSocket extends Command
 {
     
-    protected $bindPrex = 'uid_bind_fd_';    
+    protected $userPrex = 'uid_bind_fd_';  
+    protected $fdPrex = 'fd_bind_uid_';  
    // 命令行配置函数
     protected function configure(){
         // setName 设置命令行名称
@@ -74,8 +75,8 @@ class WebSocket extends Command
     // 连接关闭时回调函数
     public function onClose(\swoole_websocket_server $server, $fd){
         	 //设置用户为登录状态  
-    	    $key = $this->bindPrex.$fd;
-            $uid =  Cache::get($key);  
+    	    $fdkey = $this->fdPrex.$fd;
+            $uid =  Cache::get($fdkey); 
             Db::name('user')->where('id', $uid)->update(['status' => 0]);
     }
 
@@ -83,8 +84,8 @@ class WebSocket extends Command
         $message = json_decode($data, true);
         $message_type = $message['type']; 
         switch ($message_type) {
-        case 'login':
-            $uid = $message['uid'];
+        case 'init':
+            $uid = $message['id'];
             // 设置session
    
             session('username', $message['username']);
@@ -92,8 +93,10 @@ class WebSocket extends Command
             session('uid', $uid);
 
             // 将当前链接与uid绑定
-            $key = $this->bindPrex.$fd;
-            Cache::set($key, $uid);
+            $fdkey = $this->fdPrex.$fd;
+            $userkey = $this->userPrex.$uid;
+            Cache::set($fdkey, $uid);
+            Cache::set($userkey, $fd);
             //查询最近1周有无需要推送的离线信息
             $map['need_send'] = 1;
             $map['to_id'] = $uid;
@@ -126,8 +129,8 @@ class WebSocket extends Command
             break;
          case 'chatMessage':
 			// 聊天消息
-			$key = $this->bindPrex.$fd;
-            $uid =  Cache::get($key);
+            $fdkey = $this->fdPrex.$fd;
+            $uid =  Cache::get($fdkey);
 
 			$content = $message['data']['to']['content'];
 			$to_uid = $message['data']['to']['to_uid'];
@@ -160,13 +163,20 @@ class WebSocket extends Command
 			if (empty(Gateway::getClientIdByUid($to_id))) {
 			   $param['need_send'] = 1;	
 			   	 
-			}
+			}else{
+                $this->sendToUid($uid, json_encode($chat_message));     
+            }
+            
 			Db::name('chatlog')->insert($param);
-			$this->sendToUid($uid, json_encode($chat_message));	
+			
 			break;
 		}
- 
+    }
 
+    public funciton sendToUid($uid, $log_message){
+         $userkey = $this->userPrex.$uid;
+         $fd = Cache::get($userkey);
+         $this->server->push($fd, $log_message);
     }
 
 

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, height=device-height, user-scalable=no, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
+<meta name="format-detection" content="telephone=no">
+<title>LayIM 移动版</title>
+
+<link rel="stylesheet" href="/static/index/dist/css/layui.mobile.css">
+
+</head>
+<body>
+
+<script src="/static/index/dist/layui.js"></script>
+<script>
+layui.config({
+  version: true
+}).use('mobile', function(){
+  var mobile = layui.mobile
+  ,layim = mobile.layim
+  ,layer = mobile.layer;
+  
+  //演示自动回复
+  var autoReplay = [
+    '您好，我现在有事不在，一会再和您联系。', 
+    '你没发错吧？face[微笑] '
+  ];
+  
+  layim.config({
+    
+    
+    //上传图片接口
+    uploadImage: {
+      url: '/upload/image' //（返回的数据格式见下文）
+      ,type: '' //默认post
+    }
+    
+    //上传文件接口
+    ,uploadFile: {
+      url: '/upload/file' //（返回的数据格式见下文）
+      ,type: '' //默认post
+    }
+    
+    ,brief: true
+
+    ,init: {
+      //我的信息
+      mine: {
+        "username": "纸飞机" //我的昵称
+        ,"id": 123 //我的ID
+        ,"avatar": "http://tvax1.sinaimg.cn/crop.0.0.300.300.180/006Iv8Wjly8ff7ghbigcij308c08ct8i.jpg" //我的头像
+        ,"sign": "懒得签名"
+      }
+    }  
+
+  });
+	
+	
+	socket = new WebSocket('ws://127.0.0.1:8282');
+	//连接成功时触发
+	socket.onopen = function(){
+		// 登录
+		var login_data = '{"type":"init","id":"' + uid + '", "username":"' + uname + '", "avatar":"' + avatar + '""}';
+		socket.send( login_data );
+		console.log("websocket握手成功!");
+	};	
+	
+	//监听收到的消息
+    socket.onmessage = function(res){
+        //console.log(res.data);
+        var data = eval("("+res.data+")");
+        switch(data['message_type']){
+            // 服务端ping客户端
+            case 'ping':
+                //console.log(data);
+                socket.send('{"type":"ping"}');
+                break;
+            // 在线
+            case 'online':
+                layim.setFriendStatus(data.id, 'online');
+                break;
+            // 下线
+            case 'offline':
+                layim.setFriendStatus(data.id, 'offline');
+                break;
+            // 检测聊天数据
+            case 'chatMessage':
+                //console.log(data.data);
+                layim.getMessage(data.data);
+                break;
+            // 离线消息推送
+            case 'logMessage':
+                setTimeout(function(){layim.getMessage(data.data)}, 1000);
+                break;
+            // 用户退出 更新用户列表
+            case 'logout':
+                layim.setFriendStatus(data.id, 'offline');
+                break;
+            
+        }
+    };
+  //创建一个会话
+
+  layim.chat({
+    id: 111111
+    ,name: '客服小智'
+    ,type: 'kefu' //friend、group等字符，如果是group，则创建的是群聊
+    ,avatar: 'http://tp1.sinaimg.cn/1571889140/180/40030060651/1'
+  });
+
+
+  
+  
+  //监听返回
+  layim.on('back', function(){
+    //如果你只是弹出一个会话界面（不显示主面板），那么可通过监听返回，跳转到上一页面，如：history.back();
+  });
+  
+  //监听自定义工具栏点击，以添加代码为例
+  
+  //监听发送消息
+     layim.on('ready', function(res){
+        //发送消息
+        layim.on('sendMessage', function(res){
+            //console.log(res);
+            if(To.type === 'friend'){
+                layim.setChatStatus('<span style="color:#FF5722;">对方正在输入。。。</span>');
+            }
+            // 发送消息
+            var mine = JSON.stringify(res.mine);
+            var to = JSON.stringify(res.to);
+            var login_data = '{"type":"chatMessage","data":{"mine":'+mine+', "to":'+to+'}}';
+            socket.send( login_data );
+        });
+
+        //在线状态切换
+        layim.on('online', function(status){
+            var change_data = '{"type":"online", "status":"' + status + '", "uid":"' + uid + '"}';
+            socket.send(change_data);
+        };
+  
+  
+
+});
+</script>
+</body>
+</html>
