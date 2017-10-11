@@ -64,12 +64,13 @@ class WebSocket extends Command
     // 建立连接时回调函数
     public function onOpen(\swoole_websocket_server $server, \swoole_http_request $request){
         //echo "server: handshake success with fd{$request->fd}\n";
+        $this->daelMessage($server,$request->fd, $request->data);
     }
 
     // 收到数据时回调函数
-    public function onMessage(\swoole_websocket_server $server, \swoole_websocket_frame $frame){
+    public function onMessage(\swoole_websocket_server $server, \swoole_websocket_frame $request){
        // echo "receive from {$frame->fd}:{$frame->data},opcode:{$frame->opcode},fin:{$frame->finish}\n";
-        $server->push($frame->fd, "11111111111111111111111");
+        $this->daelMessage($server,$request->fd, $request->data);
     }
 
     // 连接关闭时回调函数
@@ -78,9 +79,12 @@ class WebSocket extends Command
     	    $fdkey = $this->fdPrex.$fd;
             $uid =  Cache::get($fdkey); 
             Db::name('user')->where('id', $uid)->update(['status' => 0]);
+            $userkey = $this->userPrex.$uid;
+            Cache::rm($fdkey);
+            Cache::rm($userkey);
     }
 
-    public  function daelMessage(\swoole_websocket_server $server,$fd, $data){
+    public  function daelMessage($server,$fd, $data){
         $message = json_decode($data, true);
         $message_type = $message['type']; 
         switch ($message_type) {
@@ -117,7 +121,7 @@ class WebSocket extends Command
 	                    ]
 	                ];
 
-                $this->sendToUid($uid, json_encode($log_message));
+                $this->sendToUid($server,$uid, json_encode($log_message));
                 //设置推送状态为已经推送
                 Db::name('chatlog')->where('id', $vo['id'])->update(['need_send' => 0]);
               
@@ -160,23 +164,25 @@ class WebSocket extends Command
 			];
 
 			//用户不在线,标记此消息推送
-			if (empty(Gateway::getClientIdByUid($to_id))) {
-			   $param['need_send'] = 1;	
-			   	 
+            $to_userkey = $this->userPrex.$to_uid;
+            $to_fd = Cache::get($to_userkey);
+			if (empty($to_fd)) {
+			   $param['need_send'] = 1;	   	 
 			}else{
-                $this->sendToUid($uid, json_encode($chat_message));     
+                $this->sendToUid($server,$uid, json_encode($chat_message));     
             }
-            
+
 			Db::name('chatlog')->insert($param);
 			
 			break;
 		}
     }
 
-    public funciton sendToUid($uid, $log_message){
+    //发送信息
+    public funciton sendToUid($server,$uid, $log_message){
          $userkey = $this->userPrex.$uid;
          $fd = Cache::get($userkey);
-         $this->server->push($fd, $log_message);
+         $server->push($fd, $log_message);
     }
 
 
