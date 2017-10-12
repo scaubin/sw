@@ -56,7 +56,7 @@ layui.config({
   });
 	
 	
-	socket = new WebSocket('ws://127.0.0.1:8282');
+	socket = new WebSocket('ws://192.168.56.101:9501');
 	//连接成功时触发
 	socket.onopen = function(){
 		// 登录
@@ -131,15 +131,15 @@ layui.config({
             var to = JSON.stringify(res.to);
             var login_data = '{"type":"chatMessage","data":{"mine":'+mine+', "to":'+to+'}}';
             socket.send( login_data );
-        });
+			});
 
         //在线状态切换
         layim.on('online', function(status){
             var change_data = '{"type":"online", "status":"' + status + '", "uid":"' + uid + '"}';
             socket.send(change_data);
-        };
+        });
   
-  
+   });
 
 });
 </script>

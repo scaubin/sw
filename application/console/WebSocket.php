@@ -17,7 +17,7 @@ use think\console\Input;
 use think\console\Output;
 use think\Db;
 use think\Cache;
-use think\Session
+use think\Session;
 use think\Exception;
 
 /**
@@ -87,99 +87,97 @@ class WebSocket extends Command
     public  function daelMessage($server,$fd, $data){
         $message = json_decode($data, true);
         $message_type = $message['type']; 
-        switch ($message_type) {
-        case 'init':
-            $uid = $message['id'];
-            // 设置session
-   
-            session('username', $message['username']);
-            session('avatar', $message['avatar']);
-            session('uid', $uid);
+       	switch ($message_type) {
+	        case 'init':
+	            $uid = $message['id'];
+	            // 设置session
+	   
+	            session('username', $message['username']);
+	            session('avatar', $message['avatar']);
+	            session('uid', $uid);
 
-            // 将当前链接与uid绑定
-            $fdkey = $this->fdPrex.$fd;
-            $userkey = $this->userPrex.$uid;
-            Cache::set($fdkey, $uid);
-            Cache::set($userkey, $fd);
-            //查询最近1周有无需要推送的离线信息
-            $map['need_send'] = 1;
-            $map['to_id'] = $uid;
-            $map['type'] = 'friend';
-            $resMsg = Db::name('chatlog')->where($map)->select();
-            //var_export($resMsg); if (!empty($resMsg)) {
+	            // 将当前链接与uid绑定
+	            $fdkey = $this->fdPrex.$fd;
+	            $userkey = $this->userPrex.$uid;
+	            Cache::set($fdkey, $uid);
+	            Cache::set($userkey, $fd);
+	            //查询最近1周有无需要推送的离线信息
+	            $map['need_send'] = 1;
+	            $map['to_id'] = $uid;
+	            $map['type'] = 'friend';
+	            $resMsg = Db::name('chatlog')->where($map)->select();
+	            //var_export($resMsg); if (!empty($resMsg)) {
 
-            foreach ($resMsg as $key => $vo) {
-                $log_message = [
-	                'message_type' => 'logMessage', 
-	                'data' => [
-	                    'username' => $vo['from_name'], 
-	                    'avatar' => $vo['from_avatar'], 
-	                    'id' => $vo['from_id'],
-	                    'type' => 'friend',
-	                    'content' => htmlspecialchars($vo['content']),
-	                     'timestamp' => $vo['timeline'] * 1000,
-	                    ]
-	                ];
+	            foreach ($resMsg as $key => $vo) {
+	                $log_message = [
+		                'message_type' => 'logMessage', 
+		                'data' => [
+		                    'username' => $vo['from_name'], 
+		                    'avatar' => $vo['from_avatar'], 
+		                    'id' => $vo['from_id'],
+		                    'type' => 'friend',
+		                    'content' => htmlspecialchars($vo['content']),
+		                     'timestamp' => $vo['timeline'] * 1000,
+		                    ]
+		                ];
 
-                $this->sendToUid($server,$uid, json_encode($log_message));
-                //设置推送状态为已经推送
-                Db::name('chatlog')->where('id', $vo['id'])->update(['need_send' => 0]);
-              
-                }
-            }
-            
-            //设置用户为登录状态    
-            Db::name('user')->where('id', $uid)->update(['status' => 1]);
-            break;
-         case 'chatMessage':
-			// 聊天消息
-            $fdkey = $this->fdPrex.$fd;
-            $uid =  Cache::get($fdkey);
+	                $this->sendToUid($server,$uid, json_encode($log_message));
+	                //设置推送状态为已经推送
+	                Db::name('chatlog')->where('id', $vo['id'])->update(['need_send' => 0]);              
+	                }
+	            
+	            //设置用户为登录状态    
+	            Db::name('user')->where('id', $uid)->update(['status' => 1]);
+	            break;
+	         case 'chatMessage':
+				// 聊天消息
+	            $fdkey = $this->fdPrex.$fd;
+	            $uid =  Cache::get($fdkey);
 
-			$content = $message['data']['to']['content'];
-			$to_uid = $message['data']['to']['to_uid'];
+				$content = $message['data']['to']['content'];
+				$to_uid = $message['data']['to']['to_uid'];
 
-			 
-			$chat_message = [
-			    'message_type' => 'chatMessage', 
-				'data' => [
-					'username' => $_SESSION['username'],
-					'avatar' => $_SESSION['avatar'],
-					'id' => type === 'friend' ? $uid : $to_id, 
-					'type' => $type,
-					'content' => htmlspecialchars($message['data']['mine']['content']),
-					'timestamp' => time() * 1000,
 				 
-				]
-			];
-			// 加入聊天log表
-			$param = [
-			   'from_id' => $uid, 
-			   'to_id' => $to_uid,
-			   'from_name' => $_SESSION['username'], 
-			   'from_avatar' => $_SESSION['avatar'],
-			   'content' => htmlspecialchars($message['data']['mine']['content']),
-			   'timeline' => time(),
-			   'need_send' => 0
-			];
+				$chat_message = [
+				    'message_type' => 'chatMessage', 
+					'data' => [
+						'username' => $_SESSION['username'],
+						'avatar' => $_SESSION['avatar'],
+						'id' => type === 'friend' ? $uid : $to_id, 
+						'type' => $type,
+						'content' => htmlspecialchars($message['data']['mine']['content']),
+						'timestamp' => time() * 1000,
+					 
+					]
+				];
+				// 加入聊天log表
+				$param = [
+				   'from_id' => $uid, 
+				   'to_id' => $to_uid,
+				   'from_name' => $_SESSION['username'], 
+				   'from_avatar' => $_SESSION['avatar'],
+				   'content' => htmlspecialchars($message['data']['mine']['content']),
+				   'timeline' => time(),
+				   'need_send' => 0
+				];
 
-			//用户不在线,标记此消息推送
-            $to_userkey = $this->userPrex.$to_uid;
-            $to_fd = Cache::get($to_userkey);
-			if (empty($to_fd)) {
-			   $param['need_send'] = 1;	   	 
-			}else{
-                $this->sendToUid($server,$uid, json_encode($chat_message));     
-            }
+				//用户不在线,标记此消息推送
+	            $to_userkey = $this->userPrex.$to_uid;
+	            $to_fd = Cache::get($to_userkey);
+				if (empty($to_fd)) {
+				   $param['need_send'] = 1;	   	 
+				}else{
+	                $this->sendToUid($server,$uid, json_encode($chat_message));     
+	            }
 
-			Db::name('chatlog')->insert($param);
-			
-			break;
+				Db::name('chatlog')->insert($param);
+				
+				break;
 		}
     }
 
     //发送信息
-    public funciton sendToUid($server,$uid, $log_message){
+    public function sendToUid($server,$uid, $log_message){
          $userkey = $this->userPrex.$uid;
          $fd = Cache::get($userkey);
          $server->push($fd, $log_message);
